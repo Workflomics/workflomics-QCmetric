@@ -20,8 +20,6 @@ import requests             # For single API requests
 import pickle
 
 
-#TODO: all of the descriptions - Where do I put default value? 
-
 async def aggregate_requests(session, url):
     """ 
     Sync the bio.tools (page) requests so they are all made in a single session 
@@ -37,9 +35,20 @@ async def aggregate_requests(session, url):
     async with session.get(url) as response:
         return await response.json()
 
-async def get_pmid_from_doi(doi_tools):
+
+async def get_pmid_from_doi(doi_tools, doi_library_filename = 'doi_pmid_library.json'):
+    """
+    Given a list of dictionaries with data about (tool) publications, 
+    this function uses their doi to retrieve their pmids from NCBI eutils API
+
+    Parameters
+    ---
+    doi_tools : list
+        list of dictionaries with data about publications, containing the key "doi"
+    doi_library_filename : str, default 'doi_pmid_library.json' 
+        the name of the json file with doi to pmid conversions
+    """
     # Download pmids from dois
-    doi_library_filename = 'doi_pmid_library.json' # TODO: Make it customisable 
 
     try: 
         with open(doi_library_filename, 'r') as f:
@@ -47,54 +56,69 @@ async def get_pmid_from_doi(doi_tools):
     except FileNotFoundError:
         print(f'Doi library file not found. Creating new file named {doi_library_filename}.')
         doi_library = {} # {doi: pmid}, should I perhaps do {name: [pmid doi ]} instead?
+    
 
     library_updates = False
     async with aiohttp.ClientSession() as session: 
-        for tool in tqdm(doi_tools, desc="Fetching pmids from dois."):
-            doi = tool["doi"]
+        for tool in tqdm(doi_tools, desc="Downloading pmids from dois."):
+            doi = tool.get("doi")
 
             # Check if tool is already in library 
             if doi in doi_library: 
-                doi_pmid = doi_library[doi] 
-                tool["pmid"] = doi_pmid
+                tool["pmid"] = doi_library[doi] 
                 continue
-            
-            # Otherwise access NCBI API
-            library_updates = True
 
             url = f"http://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=PubMed&retmode=json&term={doi}"
             result = await aggregate_requests(session, url)
+            
             try:
                 doi_pmid = str(result.get('esearchresult').get('idlist')[0])
-                if str(doi_pmid) == 'null': #this does not feel optimal 
-                    doi_pmid = None
+                if doi_pmid and doi_pmid != 'null' and doi_pmid != "38866554": 
+                    tool["pmid"] = doi_pmid
+                    doi_library[doi] = doi_pmid  # Update the library
+                    library_updates = True
             except:
-                doi_pmid = None # if no pmid was found, will have to remove these nodes later
-
-            
-            tool["pmid"] = doi_pmid
-
-            if doi_pmid: # do not want to include Nones, since they might get updated in future
-                doi_library[doi] = doi_pmid
-
+                continue 
+        
     if library_updates:
         print(f"Writing new doi, pmid pairs to file {doi_library_filename}")
         with open(doi_library_filename, 'a') as f: #TODO a ok?
-            json.dump(doi_library, f)
+            json.dump(doi_library, f) # but this will still be wierd. change in furture
     
-    return doi_tools
+    updated_doi_tools = [tool for tool in doi_tools if tool.get('pmid')]
 
-async def get_pmids(topicID):
+    print(f"Found {len(updated_doi_tools)} more tools with pmid using their doi's")
+
+    return updated_doi_tools
+
+
+async def get_pmids(topicID, testSize = None):
+    """ 
+    Downloads all of the bio.tool tools for a specific topic and returns metadata, including pmids as two lists
+    one with dictionaries of metadata fro each tool with pmids, and one for each without a pmid in 
+    bio.tools. 
+
+    Parameters
+    ---
+    topicID : str
+        determines what topic/domain tools are downloaded from
+    testSize : int, default None
+        determines how many pages of tools are downloaded
+
+    """
+
     pmid_tools = [] # TODO: predefine the length, means one more request 
     doi_tools = [] # collect tools without pmid
 
     # requests are made during single session
 
     page = 1 
+    print("Downloading tool metadata from bio.tools")
     async with aiohttp.ClientSession() as session: 
         while page:
-            # if int(page) > 10:
-            #     break # for debug 
+            if testSize: # not the most optimal for testing, but better than noting? 
+                if page >= testSize:
+                    break # for debug 
             # send request for tools on the page, await further requests and return resonse in json format
             biotools_url = f'https://bio.tools/api/t?topicID=%22{topicID}%22&format=json&page={page}'
             biotool_data = await aggregate_requests(session, biotools_url)
@@ -104,8 +128,6 @@ async def get_pmids(topicID):
             # Checking if there are any tools, if 
 
             # To record nr of tools with primary
-            no_primary_publications = 0 
-            nr_publications = []
 
             if 'list' in biotool_data: 
                 biotools_lst = biotool_data['list']
@@ -115,8 +137,8 @@ async def get_pmids(topicID):
                     publications = tool.get('publication') # does this cause a problem if there is no publication? 
                     topic = tool.get('topic')
                
-                    if isinstance(publications, list): 
-                        nr_publications.append(len(publications))
+                    if isinstance(publications, list): #TODO: I want them all!
+                        nr_publications = len(publications)
                         try:
                             for publication in publications:
                                 if publication.get('type')[0] == 'Primary':
@@ -124,24 +146,30 @@ async def get_pmids(topicID):
                                     break
                         except:
                             primary_publication = publications[0] # pick first then 
-                            no_primary_publications += 1
                     else:
-                        nr_publications.append(1)
+                        nr_publications = 1
                         primary_publication = publications
-                        
+
+                    all_publications = [pub.get('pmid') for pub in publications]
 
                     if primary_publication.get('pmid'):
                         pmid_tools.append({
                             'name': name,
-                            'pmid': str(primary_publication['pmid']),
-                            'topic': topic[0]['term']
+                            'doi': primary_publication.get('doi'), # adding doi here too 
+                            'topic': topic[0]['term'],
+                            'nrPublications':  nr_publications,
+                            'allPublications': all_publications,
+                            'pmid': str(primary_publication['pmid'])
+
                         })
                     else:
                         
                         doi_tools.append({
                             'name': name,
                             'doi': primary_publication.get('doi'),
-                            'topic': topic[0]['term']
+                            'topic': topic[0]['term'],
+                            'nrPublications':  nr_publications,
+                            'allPublications': all_publications
                         })
 
                 page = biotool_data.get('next')
@@ -152,11 +180,52 @@ async def get_pmids(topicID):
                 break
 
     # Record the total nr of tools
-    nr_tools = int(biotool_data['count']) if biotool_data and 'count' in biotool_data else 0
+    total_nr_tools = int(biotool_data['count']) if biotool_data and 'count' in biotool_data else 0
 
-    return pmid_tools, doi_tools, no_primary_publications, nr_publications, nr_tools
+    return pmid_tools, doi_tools, total_nr_tools
 
-def get_tool_metadata(outpath, topicID="topic_0121"):  # TODO: I removed format. Check if there is any reason to have it 
+def check_datafile(filename, topicID, update = False):
+
+    """
+    Checks if the metadata json file needs to be updatesd or not
+
+    Parameters
+    ----------
+    filename : str or None
+        User provided filename used to load a specific file, if none the standard filename will be created using 
+        topic ID and current date and time
+    topicID : str
+        EDAM topic ID used as tag in the filename to indicate the domain of the file contents 
+    update : Boolean, default False
+        Determines wether or not to force the creation of a new data file
+    """
+
+    if not filename: # if no given filename 
+        date_format = "%Y%m%d"
+        pattern = f'tool_metadata_{topicID}*'
+        matching_files = glob.glob(pattern)
+
+        if matching_files:
+            matching_files.sort(key=os.path.getmtime)
+            filename = matching_files[-1]          
+            file_date = datetime.strptime(filename.split('_')[-1].split('.')[0], date_format)
+            
+            if file_date < datetime.now() - timedelta(days=7) or update == True:
+                print("Old datafile. Updating...")
+            else:
+                print("Bio.tools data loaded from existing file.")
+                return (filename, True) # True, as in load the file 
+        else:
+            print("No existing bio.tools file. Downloading data.") 
+        filename = f'tool_metadata_{topicID}_{datetime.now().strftime(date_format)}.json' 
+
+    else:
+        print("Proceeding with custom file, please note that the contents may be dated.")
+
+    return (filename, False) # False, as in create the file 
+
+
+def get_tool_metadata(outpath, topicID="topic_0121", filename = None, update = False ): 
                                                         # TODO: should add parameter for optional forced retrieval - even if csv file, still recreate it 
                                                         # TODO: Currently no timing - add tracker
     """
@@ -165,114 +234,111 @@ def get_tool_metadata(outpath, topicID="topic_0121"):  # TODO: I removed format.
 
     Parameters
     ----------
+    outpath : str
+        Path to directory where a newly created file should be placed
     topicID : str TODO: make this a int instead? why am I writing topic? 
         The ID to which the tools belongs to, ex. "Proteomics" or "DNA" as defined by 
         EDAM ontology (visualisation: https://edamontology.github.io/edam-browser/#topic_0003)
-
-    
+    filename : str or None
+        User provided filename used to load a specific file, if none the standard filename will be created using 
+        topic ID and current date and time
+    update : Boolean, default False
+        determines wether or not to force the retrieval  of a new datafile
     """
 
 
     # File name checking and creation 
-    date_format = "%Y%m%d"
-    pattern = f'biotools_metadata_{topicID}*'
-    matching_files = glob.glob(pattern)
+    filename, load = check_datafile(filename, topicID, update)
+
+    if load:
+        with open(filename, "r") as f:
+            metadata_file = json.load(f)
+        return metadata_file
     
-    if matching_files:
-        matching_files.sort(key=os.path.getmtime)
-        csv_filename = matching_files[-1]
-        
-        # Check if file older than a week
-        file_date = datetime.strptime(csv_filename.split('_')[-1].split('.')[0], date_format)
-        if file_date < datetime.now() - timedelta(days=7):
-            print("Old datafile. Updating...")
-            csv_filename = f'biotools_metadata_{topicID}_{datetime.now().strftime(date_format)}.csv'
-        else:
-            print("Bio.tools data loaded from existing CSV file.")
-            df = pd.read_csv(csv_filename)
-            return df
-    else:
-        print("No existing bio.tools CSV file. Downloading data.") 
-        # Define the CSV filename
-        csv_filename = f'biotools_metadata_{topicID}_{datetime.now().strftime(date_format)}.csv' 
-    
+    # Creating json file 
 
+    metadata_file = {"creationDate": str(datetime.now())}
 
+    # Download bio.tools metadata
+    pmid_tools, doi_tools, tot_nr_tools = asyncio.run(get_pmids(topicID))
 
-    
-    # TODO: should filepath/name be allowed to be configurable?
-    # then the following could be a separate function called by this one, or is this very inefficient?
-    # TODO: should place files created in a folder named for each run
-
-    pmid_tools, doi_tools, no_primary_publications, nr_publications, nr_tools = asyncio.run(get_pmids(topicID))
-   
-    print("Nr of tools without a primary publication tag:", no_primary_publications)
-    print("Largest number of publications for a tool: ",max(nr_publications))
-    print("Nr of tools with pmid in bio.tools: ",len(pmid_tools))
-    print("Nr of tools without pmid (with doi): ", len(doi_tools))
-
-    with open(f'{outpath}/nr_publications.pkl', 'wb') as f:
-        pickle.dump(nr_publications, f)
+    metadata_file['totalNrTools'] = tot_nr_tools  
+    metadata_file['biotoolsWOpmid'] = len(doi_tools)
 
     # Update list of doi_tools to include pmid
     doi_tools = asyncio.run(get_pmid_from_doi(doi_tools))
 
-    # Convert list of dictionaries to dataframe
-    df_pmid = pd.DataFrame(pmid_tools)
-    df_doi = pd.DataFrame(doi_tools)
+    metadata_file["nrpmidfromdoi"] = len(doi_tools)
 
-    # Drop column doi, and rows with "pmid == None" and concatenate them. TODO: maybe export to logfile which ones did not have pmid or doi pmid 
-    df_doi.drop(columns=["doi"], inplace=True) # do I need to do =, or is doi still there otherwise?
-    df_doi = df_doi.dropna(subset=["pmid"])
-    nr_doi_id_pmids = len(df_doi.dropna(subset=["pmid"]))
-    print('Nr of tools whose pmid could be identified using the doi:', nr_doi_id_pmids )
-    df_all = pd.concat([df_pmid, df_doi], axis=0, ignore_index=True)
-    
-    # Save dataframe to file
-    df_all.to_csv(csv_filename, index=False)
+    all_tools = pmid_tools + doi_tools
+    metadata_file["tools"] = all_tools
+
+    json_data = json.dumps(metadata_file) # convert to json str
+    with open(filename, 'w') as f:
+            json.dump(json_data, f)
 
     # If there were any pages, pmid not empty, check how many tools were retrieved and how many tools had pmids
 
-    nr_included_tools = len(pmid_tools) + nr_doi_id_pmids
-    print(f'Found {nr_included_tools} out of a total of {nr_tools} tools with PMIDS.')
+    print(f'Found {len(all_tools)} out of a total of {tot_nr_tools} tools with PMIDS.')
 
-    return df_all
+    return metadata_file
 
-def europepmc(article_id, format='JSON', source='MED', page=1, page_size=1000):   # TODO: replace own wrapper with recommendation? https://github.com/ML4LitS/CAPITAL/tree/main
-                                                                                # TODO: call output="idlist" immidiately? then we have no metadata but we dont use that anyways!
+## citations
+
+def get_pmids_from_file(filename): # TODO change to json 
+    """ 
+    Retrieves a list of all of the pmids for the primary publications in the data file 
+    
+    Parameters
+    ----------
+    filename : str
+        the name of the json file from which the script retrieves the pmids
+    """
+    with open(filename, "r") as f:
+        metadata_file = json.load(f)
+    tools = metadata_file['tools']
+
+    return [tool['pmid'] for tool in tools]
+
+
+async def europepmc_request(session, article_id, page=1, source='MED'):
     """ 
     Downloads pmids for the articles citing the given article_id, returns list of citation pmids (PubMed IDs)
         
     Parameters
     ----------
-    article_id : str # TODO: int? 
+    session : asyncio session tag
+
+    article_id : int or str 
         pmid, PubMed ID, for a given article.
+
+    page: int, default == 1
+        page number for query
+
     source: str
         source ID as given by the EuropePMC API documentation: https://europepmc.org/Help#contentsources 
-
-    page, int, default == 1
-        determines where to start looking TODO: remove this, why would you not start at 1? 
-
-    pagesize, int, default 1000 max 1000
-        determines number of results per page
     
     """ 
+    url = f'https://www.ebi.ac.uk/europepmc/webservices/rest/{source}/{article_id}/citations?page={page}&pageSize=1000&format=json'
+    async with session.get(url) as response:
+        if response.ok:
+            result = await response.json()
+            citations = result['citationList']['citation']
+            citation_ids = [citation['id'] for citation in citations]
+            if result['hitCount'] <= 1000 * page:
+                return citation_ids
+            else:
+                next_page_citations = await europepmc_request(session, article_id, page + 1, source)
+                return citation_ids + next_page_citations
+        else:
+            print(f'Something went wrong with request {url}')
+            return None
 
-    # create a url with the given requirements according to the EuropePMC API synthax and query the API
-    base_url = f'https://www.ebi.ac.uk/europepmc/webservices/rest/{source}/{article_id}/citations?page={page}&pageSize={page_size}&format={format}'
-    result = requests.get(base_url)
-
-    # Return all citations, given the query was accepted
-    # TODO: jsonpath-ng
-    if result.ok:
-        return result.json()['citationList']['citation']
-    else:
-        print('Something went wrong') # TODO: better error message. Try/except? 
-
-
-
-
-
-
-
-
+async def get_citations(filename):
+    pmids = get_pmids_from_file(filename)
+    async with aiohttp.ClientSession() as session:
+        citation_list = []
+        for article_id in tqdm(pmids, desc='Downloading citations from EuropePMC'):
+            citation_ids = await europepmc_request(session, article_id)
+            citation_list.append(citation_ids)
+        return citation_list
