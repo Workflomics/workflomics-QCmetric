@@ -1,0 +1,25 @@
+name,position,id,comment
+msconvert,1,"23051804",
+ThermoRawFileParser,1,"31755270",
+TDF2mzML,1,"36758608","not primary rather library built on TDF2mzML"
+comet,2,"23148064",
+MSFragger,2,"28394336",
+XTandem,2,"14976030",
+Mascot,2,"10612281","Unclearifprimary"
+Sequest,2,"24226387",
+SpectraST,2,"26629978",
+Novor,2,"26122521",
+Magnum,2,"35184559",
+Kojak,2,"25812159",
+PeptideProphet,3,"12403597",
+PTMprophet,3,"25631240",
+iProphet,3,"23720762",
+Libra,4,"20101611",
+ASAPratio,4,"14640741",
+XPress,4,"11581660",
+Quantic,4,"36648445","Not primary rather TPP paper presenting Quantic and DISCO"
+DISCO,4,"36648445","Not primary rather TPP paper presenting Quantic and DISCO"
+StPeter,4,"29400476",
+ProteinProphet,5,"14632076",
+SBEAMS,6,"16756676",
+Protographer,6,,

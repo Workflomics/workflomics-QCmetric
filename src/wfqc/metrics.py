@@ -539,9 +539,8 @@ def citations( workflow, citation_data_file, normalise = True):
         return 0
     
     for tool in tool_list:
-        total_citations.append([tool['nrCitations'] for tool in citation_data_file['tools'] if tool['pmid'] == tool])
-
+        total_citations.append([t['nrCitations'] for t in citation_data_file['tools'] if t['pmid'] == tool])
     if normalise:
-        return sum(total_citations)/n
+        return sum([c[0] for c in total_citations if c])/n
     else:
-        return sum(total_citations)
+        return sum([c for c in total_citations if c])
