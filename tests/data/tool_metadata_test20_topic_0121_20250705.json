@@ -217,6 +217,17 @@
             "pmid": "25631240"
         },
         {
+            "name": "ProteinProphet",
+            "doi": null,
+            "topic": "Proteomics",
+            "nrPublications": 1,
+            "allPublications": [
+                "14632076"
+            ],
+            "pubDate": null,
+            "pmid": "14632076"
+        },
+        {
             "name": "PeptideProphet",
             "doi": null,
             "topic": "Proteomics",
@@ -226,4 +237,28 @@
             ],
             "pubDate": "2002 Oct 15",
             "pmid": "12403597"
-        }]}
+        },
+        {
+            "name": "XTandem",
+            "doi": "10.1093/bioinformatics/bth092",
+            "topic": "Proteomics",
+            "nrPublications": 1,
+            "allPublications": [
+                null
+            ],
+            "pubDate": "2004 Jun 12",
+            "pmid": "14976030"
+        },
+        {
+            "name": "StPeter",
+            "doi": "10.1021/acs.jproteome.7b00786",
+            "topic": "Proteomics",
+            "nrPublications": 1,
+            "allPublications": [
+                "29400476"
+            ],
+            "pubDate": "2018 Mar 2",
+            "pmid": "29400476"
+        }
+
+        ]}

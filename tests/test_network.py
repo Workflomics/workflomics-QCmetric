@@ -84,7 +84,7 @@ def test_cocitation_graph():
     assert sorted(tools_in_final_network) == sorted(G.vs['name'])
 
 def test_create_graph():
-    G, included_tools, node_degree_dict = nw.create_graph(edges, tool_metadata, includeCitationNodes=True)
+    G, included_tools, node_degree_dict = nw.create_graph(edges, tool_metadata, cocitation=False)
     print(np.sort(nodes_in_final_network), np.sort(G.vs['name']))
     assert sorted(nodes_in_final_network) == sorted(G.vs['name'])
 

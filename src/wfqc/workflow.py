@@ -1,23 +1,21 @@
-from cwl_utils.parser import load_document_by_uri, save # for workflow parsing 
-from ruamel import yaml
-
-# General packages
-import pandas as pd         
-import os
-from tqdm import tqdm       
-import pickle
+from cwl_utils.parser import load_document_by_uri 
+       
 import numpy as np
-from datetime import datetime, timedelta
-import glob
-import sys
-import matplotlib.pyplot as plt
 import json
 
-def parse_workflows(cwl_file,cvsfile):
-    # Import CWL Object
-    cwl_obj = load_document_by_uri(cwl_file)
 
-    # Extract edges from CWL object
+def parse_workflows(cwl_filename: str, metadata_filename:str) -> list: 
+    """
+    Function that turns a CWL representation of a workflow into a list of node tuples (edges), where source and target is represented by the pmid of their repecitve primary publication. 
+
+    :param cwl_filename: String representing the path to the CWL file
+    :param metadata_filename: String representing the path to the bio.tools meta data file. Should adhere to the meta data file schema as defined in the pubmetric documentation TODO:add link. 
+
+    :return: List of tuples representing the edges in the workflow.
+
+    """
+    cwl_obj = load_document_by_uri(cwl_filename)
+
     edges = []
     for step in cwl_obj.steps:
         step_id = step.id.split("#")[-1]
@@ -28,68 +26,65 @@ def parse_workflows(cwl_file,cvsfile):
         for output_param in step.out:
             edges.append((step_id, output_param.split("/")[-1]))
 
-    # Extract pairwise connections between tools
     pairwise_connections = set()
     for source, target in edges:
         if "_out_" in source:
             tool_id = target.split("_")[0]
             for next_target, next_source in edges:
                 if next_source == source:
-                    pairwise_connections.add((tool_id, next_target.split("_")[0]))
+                    pairwise_connections.add(( next_target.split("_")[0], tool_id)) # feels illogical to do it this way but thats how it turns out correct
 
-    # Read CSV file containing tool information
-    csv_filename = cvsfile 
-    f = pd.read_csv(csv_filename)
+    with open(metadata_filename, 'r') as f:
+        metadata_file =  json.load(f)
 
-    # Retrieve PMID values for pairwise connections, this should be bio.tools ids instead? 
-    new_edges = []
+    pmid_edges = []
     for edge in pairwise_connections:
-        source_pmid = f.loc[f['name'] == edge[0], 'pmid'].values[0] if len(f.loc[f['name'] == edge[0], 'pmid']) > 0 else None # neme in small letters too? 
-        target_pmid = f.loc[f['name'] == edge[1], 'pmid'].values[0] if len(f.loc[f['name'] == edge[1], 'pmid']) > 0 else None
+        source_pmid = next((tool['pmid'] for tool in metadata_file['tools'] if tool['name'] == edge[0]), None)
+        target_pmid = next((tool['pmid'] for tool in metadata_file['tools'] if tool['name'] == edge[1]), None)
         if source_pmid is not None and target_pmid is not None:
-            new_edges.append((str(source_pmid), str(target_pmid)))
+            pmid_edges.append((str(source_pmid), str(target_pmid)))
 
-    # Print new edges
-    workflow_tools = np.unique([element for tuple in new_edges for element in tuple])
 
-    return new_edges, list(workflow_tools)
+    return pmid_edges
 
-    # # Construct graphs
-    # G1 = igraph.Graph.TupleList(edges, directed=True)
-    # G2 = igraph.Graph.TupleList([(target, source) for source, target in edges], directed=True) # rotated
-    # G3 = igraph.Graph.TupleList(pairwise_connections, directed=True)
-    # G4 = igraph.Graph.TupleList(new_edges, directed=True)
+def generate_random_workflow(tool_list: list, workflow:list) -> list: 
+    """
+    Generates a workflow of the same structure as the given workflow, but where each tool is replaced with a randomly picked one from the given set.
 
-# TODO: download workflows
+    :param tool_list: List of tools to pick from. Generally this should be all tools in the domain.
+    :param workflow: List of tuples (edges) representing the workflow.
 
-# TODO: improve randomisation to have sequential networks
+    :return: List of tuples representing a workflow where each tool has been replaced by another, random, one.  
+    """
+    workflow_tools = np.unique([element for tuple in workflow for element in tuple])
+    nr_tools = len(workflow_tools)
 
-# number of edges in the workflow
+    random_workflow = []
+    random_workflow_tools = np.random.choice(tool_list, nr_tools)
 
-def radnomise_workflows(included_tools, num_pairs = 3):
-    workflow_pairs = []
-    while len(workflow_pairs) < num_pairs:
-        article1 = np.random.choice(included_tools)
-        article2 = np.random.choice(included_tools)
-        if article1 != article2:  # Ensure article1 and article2 are different
-            workflow_pairs.append((article1, article2))
-
-    workflow_tools = np.unique([element for tuple in workflow_pairs for element in tuple])
-    return workflow_pairs, workflow_tools
-    # print( "Tools in pseudo WF:", workflow_tools)
-    # # Print the generated pairs
-    # print("Generated workflow pairs (WF edges):")
-    # for pair in workflow_pairs:
-    #     print(pair)
+    # Mapping original tools to the new ones and using the mapping to replace them. 
+    tool_mapping = dict(zip(workflow_tools, random_workflow_tools))
+    random_workflow = [(str(tool_mapping[edge[0]]), str(tool_mapping[edge[1]])) for edge in workflow]
+    
+    return random_workflow
 
 
 
-### These are just for APE parsing, should nto be icluded in the final package because they are too specific
+
+### The following are just for APE parsing, should not be icluded in the final package? they are just string parsing so very ustable probably
 
 
-def load_undoc_tool(cwl_file):
-    with open(cwl_file, "r") as f:
+def load_undoc_tool(cwl_filename: str) -> list:
+    """
+    String parsing chaos alternative to parse_workflows. Can parse any APE generated CWL_file. Relies on input and output naming conventions.
+
+    :param cwl_filename: String representing the path to the CWL file
+
+    :return: List of tuples ro unprocessed tool names.
+    """
+    with open(cwl_filename, "r") as f:
         cwl_string = f.read()
+
     steps_string = cwl_string.split("steps:\n")[1].split("outputs")[0]
     steps_list = steps_string.split('\n')
     steps_list  = [row for row in steps_list if not row.startswith('    ')]
@@ -122,7 +117,16 @@ def load_undoc_tool(cwl_file):
             edge_list.append(edge)
     return edge_list
 
-def extract_tool_connections(edges):
+def extract_tool_connections(edges: list) -> set:
+    """
+    Extracts tool connections from a list of edges, identifying pairwise connections that bypass intermediate steps. 
+    OBS: Involves string parsing, possibly not very reliable. 
+
+    :param edges: List of tuples representing edges in a workflow.
+
+    :return: A set of pairwise connections extracted from the original edges.
+
+    """
     pairwise_connections = set()
     for source, target in edges:
         if "_out_" in target:
@@ -131,66 +135,118 @@ def extract_tool_connections(edges):
                     pairwise_connections.add((source.lstrip(), next_target.lstrip()))
     return pairwise_connections
 
-def reconnect_edges(missing_node, edges): # this is very crude at the moment and does not take into account the structure of the wf, should perhaps instead do some calculation not dep on everything being connected
+def reconnect_edges(missing_node, workflow): 
+    """
+    Given a workflow and a missing node, this identifies all edges in the original workflow containing that node and reconnects them.
+
+    :param missing_node: The name of the node which does not have a PmID
+    :param workflow:  List of tuples (edges) representing a workflow
+
+    :return: New reconnected edges. OBS does not return the full reconnected workflow. See use in generate_pmid_edges()
+    """
     reconnected_edges = []
 
-    sources = [edge[0] for edge in edges if missing_node == edge[1]]
-    targets = [edge[1] for edge in edges if missing_node == edge[0]]
+    sources = [edge[0] for edge in workflow if missing_node == edge[1]]
+    targets = [edge[1] for edge in workflow if missing_node == edge[0]]
 
     for source in sources:
         for target in targets:
             reconnected_edges.append((source, target))
     return reconnected_edges
 
-def name_to_pmid(file, name):
-    """ Given open csv and a tool name it returns the pmid for that tool""" # TODO change to json
-    pmid = file.loc[file['name'] == name, 'pmid'].values[0] if len(file.loc[file['name'] == name, 'pmid']) > 0 else None
+def name_to_pmid(metadata_file: dict, name: str) -> str:
+    """ 
+    Given the meta data file and a tool name it returns the pmid for that tool
+    
+    :param metadata_file: THE metadatafile TODO: update with url
+    :param name: name of tool for which you want to retrieve the pmid
+
+    :return: String of the pmid, or None if no pmid is found (if the tool is not in the metadatafile)
+    
+    """ 
+    pmid = next((tool['pmid'] for tool in metadata_file['tools'] if tool['name'] == name), None)
     return pmid
     
-def pmid_edges(csv_filename, tool_edges):
 
-    f = pd.read_csv(csv_filename)
+def generate_pmid_edges(metadata_filename: str, workflow:list, handle_missing:str = 'reconnect') -> list: # what should be the default?
+    """
+    Takes a workflow of names and generates the pmid version of the workflow, and handles missing PmID values. 
+
+    :param metadata_filename: The file TODO add url.
+    :param workflow: List of tuples (edges) representing a workflow, where the sources and targets are tool names. 
+    :param handle_missing: Either 'reconnect', 'remove' or 'keep'. Specifying how to handle missing PmID values.
+
+    :return: List of tuples (edges) representing a workflow, where the sources and targets are PmIDs.
+
+    :raises ValueError: If handle missing is not one of 'reconnect', 'remove', 'keep'.
+    """
+
+    if handle_missing not in ['reconnect', 'remove', 'keep']:
+        raise ValueError("Incorrect option for 'handle_missing' parameter choose one of 'reconnect', 'remove' or 'keep'.")
+
+
+    with open(metadata_filename, 'r') as f:
+        metadata_file = json.load(f)
 
     new_edges = []
-    excluded_tools = []
-    workflow_tools = {}
+    missing_tools = []
+    pmid_name_mapping = {}
+    reconnected_edges = []
 
-    for edge in tool_edges:
-        if edge[0] in excluded_tools or edge[1] in excluded_tools:
+    for edge in workflow:
+        
+        if handle_missing == 'reconnect':
+            if edge[0] in missing_tools or edge[1] in missing_tools:
+                continue
+        
+        source = edge[0]
+        target = edge[1]
+
+        source_pmid = name_to_pmid(metadata_file, source)
+        target_pmid = name_to_pmid(metadata_file, target)
+
+        pmid_name_mapping[source] = source_pmid
+        pmid_name_mapping[target] = target_pmid
+
+        if handle_missing == 'keep':
+            new_edges.append((str(source_pmid), str(target_pmid)))
             continue
 
-
-        source_pmid = name_to_pmid(f, edge[0])
-        target_pmid = name_to_pmid(f, edge[1])
-
-        workflow_tools[edge[0]] = source_pmid
-        workflow_tools[edge[1]] = target_pmid
-
-        if source_pmid is not None and target_pmid is not None:
+        if source_pmid is not None and target_pmid is not None: 
             new_edges.append((str(source_pmid), str(target_pmid)))
         else:
             if not source_pmid:
-                excluded_tools.append(edge[0])
-                reconnected_edges = reconnect_edges(edge[0], tool_edges)
+                missing_tools.append(source)
+                if handle_missing == 'reconnect':
+                    reconnected_edges.append(reconnect_edges(source, workflow))
             if not target_pmid:
-                excluded_tools.append(edge[1])
+                missing_tools.append(target)
+                if handle_missing == 'reconnect': # otherwise they are skipped and effectively removed from the workflow. "remove" key 
+                    reconnected_edges.append(reconnect_edges(target, workflow))
 
 
-    if excluded_tools:
-        print(np.unique(excluded_tools), "do(es) not have a pmid(s) and all edges to or from the node(s) will be excluded or reconnected.")
+    if missing_tools:
+        print(np.unique(missing_tools), "do(es) not have a pmid(s) and all edges to or from the node(s) will be excluded or reconnected.")
 
-        pmid_reconnected_edges = [(workflow_tools[name1], workflow_tools[name2]) for name1, name2 in reconnected_edges]
+        pmid_reconnected_edges = [(pmid_name_mapping[name1], pmid_name_mapping[name2]) for sublist in reconnected_edges for  name1, name2 in sublist]
         new_edges = new_edges + pmid_reconnected_edges 
 
-    return new_edges, workflow_tools
+    return new_edges
 
+def parse_undocumented_workflows(cwl_filename: str, metadata_filename:str) -> list:
+    """
+    Pipeline for processing CWL files by reading them line by line. 
+    Requires certain naming conventions for input and output (e.g. XTandem_out_1 ) and for tools to be named according to the bio.tools documentation (e.g. XTandem_01). 
 
-def parse_undocumented_workflows(cwl_file, csvfile, undocumented=True):
-    
-    edges = load_undoc_tool(cwl_file)
-    
+    :param metadata_filename: The file TODO add url.
+    :param cwl_filename: The path to the CWL file
+
+    :return: List of tuples (edges) representing a workflow, where the sources and targets are PmIDs.
+
+    """
+    edges = load_undoc_tool(cwl_filename)
+
     tool_edges = extract_tool_connections(edges)
 
-
-    return pmid_edges(csvfile, tool_edges)
+    return generate_pmid_edges(metadata_filename, tool_edges, handle_missing='reconnect')
 
