@@ -11,10 +11,135 @@ import sys
 import os
 import aiohttp
 from tqdm import tqdm       
+import igraph
+from typing import Optional
 
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), 'src')))
-import wfqc.data 
+import pubmetric.data 
+
+
+def parse_tuple_workflow(graph: igraph.Graph, pmid_edges: list): # for reading rated dataset
+    """"
+    Takes a list of tuples of pmids and turns it into the format produced by the parse_cwl_workflows function. 
+    Note that this representation does not take into account if a workflow has tool repetitions. 
+
+    :param pmid_workflow: List of tuples of pmids 
+
+    :return: Dictionary of tuples representing the edges in the workflow.
+
+    """
+    steps = {}
+    edges = []
+
+    for edge in pmid_edges:
+        source_pmid = edge[0]
+        target_pmid = edge[1]
+
+        source = next(vs['name'] for vs in graph.vs if vs['pmid']== source_pmid) # transfering numbering to random steps
+        target = next(vs['name'] for vs in graph.vs if vs['pmid']== target_pmid)
+
+        edges.append( (source, target ) )
+
+        steps[source] = source_pmid # there is some repetition here but 
+        steps[target] = target_pmid
+
+    random_workflow = {
+        'edges': edges,
+        'steps': steps,
+        'pmid_edges': pmid_edges
+    }
+
+    return random_workflow   
+
+
+
+## tag : next step 
+def generate_random_workflow(graph: igraph.Graph, workflow: dict, tool_list: Optional[list] = None, random_seed: int = 42, retain_degree: bool = True) -> list:  # TODO: must be updated to work with the new workflow format
+    """
+    Generates a workflow of the same structure as the given workflow, but where each tool is replaced with a randomly picked one from the given set.
+
+    :param tool_list: List of tools to pick from. Generally this should be all tools in the domain.
+    :param workflow: Dictionary representing the workflow.
+
+    :return: List of tuples representing a workflow where each tool has been replaced by another, random, one.  
+    """
+
+    np.random.seed(random_seed)
+
+    steps = workflow['steps']
+    edges = workflow['edges']
+
+    # I want it to have the same structure and the same degree. 
+
+    random_steps = {}
+    random_edges = []
+    random_pmid_edges = []
+
+
+    pmid_mapping = {}
+    for step in list(steps.items()):
+        pmid = step[1]
+        if pmid in pmid_mapping.keys():
+            continue
+        if retain_degree:
+            degree = next(vs.degree() for vs in graph.vs if vs['pmid']==pmid) # TODO: replace the old list comprehension with next
+            # Binning degrees (1-50 is 50, 51-100 is 100 etc), so the random tools are a bit more fairly chosen
+            binned_degree = ((degree + 49) // 50) * 50
+            tool_list = [vs['pmid'] for vs in graph.vs if  (binned_degree - 50) < vs.degree() <= (binned_degree + 50)]
+            print('nr tools to choose from at degree', degree, len(tool_list))
+
+        
+        random_pmid = np.random.choice(tool_list)
+        pmid_mapping[pmid] = random_pmid
+
+    for edge in edges:
+        source = edge[0]
+        target = edge[1]
+
+        random_source_pmid = pmid_mapping[steps[source]]
+        random_target_pmid = pmid_mapping[steps[target]]
+        
+        random_source = next(vs['name'] for vs in graph.vs if vs['pmid']== random_source_pmid) + f'_{source.split("_")[1]}' # transfering numbering to random steps
+        random_target = next(vs['name'] for vs in graph.vs if vs['pmid']== random_target_pmid) + f'_{target.split("_")[1]}'
+
+        random_edges.append( (random_source, random_target ) )
+        random_pmid_edges.append( (random_source_pmid, random_target_pmid) )
+
+        random_steps[random_source] = random_source_pmid # there is some repetition here but 
+        random_steps[random_target] = random_target_pmid
+
+
+    random_workflow = {
+        'edges': random_edges,
+        'steps': random_steps,
+        'pmid_edges': random_pmid_edges
+    }
+
+    return random_workflow
+
+
+
+
+def reconnect_edges(missing_node, workflow): 
+    """
+    Given a workflow and a missing node, this identifies all edges in the original workflow containing that node and reconnects them.
+
+    :param missing_node: The name of the node which does not have a PmID
+    :param workflow:  List of tuples (edges) representing a workflow
+
+    :return: New reconnected edges. OBS does not return the full reconnected workflow. See use in generate_pmid_edges()
+    """
+    reconnected_edges = []
+
+    sources = [edge[0] for edge in workflow if missing_node == edge[1]]
+    targets = [edge[1] for edge in workflow if missing_node == edge[0]]
+
+    for source in sources:
+        for target in targets:
+            reconnected_edges.append((source, target))
+    return reconnected_edges
+   
 
 
 def stratified_split(data, test_size=0.2, random_state=42):
@@ -245,12 +370,30 @@ def unique_workflows(workflow_json, metadata_filename):
 
 
 
+def get_pmids_from_file(filename: str) -> list:
+    """
+    Retrieves a list of all PMIDs for the primary publications in the specified meta data JSON file.
+
+    :param filename: str
+        The name of the JSON file from which to retrieve the PMIDs.
+
+    :return: list
+        List of PMIDs extracted from the JSON file.
+    """
+
+    with open(filename, "r") as f:
+        metadata_file = json.load(f)
+    tools = metadata_file['tools']
+
+    return [tool['pmid'] for tool in tools]
+
+
 async def get_citations(filename):
     """ download citations for all tools in the meta data file"""
-    pmids = wfqc.data.get_pmids_from_file(filename)
+    pmids = get_pmids_from_file(filename)
     async with aiohttp.ClientSession() as session:
         citation_list = []
         for article_id in tqdm(pmids, desc='Downloading citations from EuropePMC'):
-            citation_ids = await wfqc.data.europepmc_request(session, article_id)
+            citation_ids = await pubmetric.data.europepmc_request(session, article_id)
             citation_list.append(citation_ids)
         return citation_list

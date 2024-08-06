@@ -1,10 +1,10 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='wfqc',
+    name='pubmetric',
     version='0.1.0',
-    description='A description of your project',
-    author='Your Name',
+    description='Cocitation based metric for workflow evaluation',
+    author='Alma Nilsson',
     author_email='your.email@example.com',
     license='Apache License 2.0',
     packages=find_packages(),
@@ -18,10 +18,11 @@ setup(
         'tqdm==4.66.2',
         'numpy',
         'matplotlib',
-        'nest_asyncio',
         'jsonpath-ng',
         'ruamel.yaml',
-        'cwl_utils'
+        'cwl_utils',
+        'fastapi',
+        'scikit-learn'
     ],
     extras_require={
         'test': [
