@@ -346,6 +346,8 @@ def complete_average(graph: igraph.Graph,
     elif isinstance(workflow, list):
         step_names = list(set(element for tup in workflow for element in tup))
         edges = workflow
+    else:
+        raise TypeError("Workflow must be a list or a dictionary")
 
     nr_steps = len(step_names)
     nr_edges = len(edges)

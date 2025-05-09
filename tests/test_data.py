@@ -1,9 +1,12 @@
+import json
 import os
 import pytest
 import asyncio
 import aiohttp
 import pubmetric.data as data
 from schemas import metafile_schema_validation
+from pubmetric.data import download_domain_annotations, get_tool_metadata
+from pubmetric.network import create_network
 
 def test_get_tool_metadata_from_file(shared_datadir):
     """ Testing that loading a metadata file works"""
@@ -19,7 +22,7 @@ def test_get_tool_metadata_schema():
     """Testing that the generated medatata file has the right format"""
     metadata_file = asyncio.run(data.get_tool_metadata(outpath='',
                                                        topic_id="topic_0121",
-                                                       test_size=20))
+                                                       test_size=100))
     assert metafile_schema_validation(metadata_file)
 
 @pytest.mark.asyncio
@@ -61,7 +64,7 @@ def test_get_pmid_from_doi_from_file_with_updates(shared_datadir):
     assert str(pmid_list[0]["pmid"]) == '23051804'
 
 def test_get_pmids():
-    test_size = 10
+    test_size = 100
     pmid_tools, doi_tools, total_nr_tools  = asyncio.run(data.get_pmids(topic_id="topic_0121", test_size=test_size))
     print(pmid_tools, doi_tools, total_nr_tools)
     # TODO: just checking some format things right now, could improve
@@ -91,3 +94,44 @@ def test_get_ages():
      ]
      tool_metadata_inc_ages = asyncio.run(data.process_publication_dates(tool_metadata))
      assert tool_metadata_inc_ages[0]['publication_date'] == 2002
+
+
+def test_download_domain_annotations():
+    """Tests downloading the domain annotations for one tool"""
+    tools = download_domain_annotations(annotations="workflomics")
+    assert len(tools) > 10
+    assert len(tools) < 30
+
+
+def test_create_network():
+    asyncio.run(create_network(tool_selection="workflomics", outpath="out/out_default", inpath="out/out_default"))
+
+def test_create_network_2():
+    asyncio.run(create_network(tool_selection=["Comet",
+    "PeptideProphet",
+    "ProteinProphet",
+    "StPeter",
+    "mzRecal",
+    "idconvert",
+    "msconvert",
+    "GOEnrichment",
+    "gProfiler",
+    "XTandem",
+    "MS Amanda",
+    "MSFragger",
+    "protXml2IdList","wcloud"], outpath="out/out_default", inpath="out/out_default"))
+
+
+def test_get_tool_metadata():
+    file :dict = asyncio.run(get_tool_metadata(outpath="out/out_default", topic_id=""))
+
+    # now write to the file system the dict as a json file
+    with open("out/out_default/tool_metadata.json", "w") as f:
+        f.write(json.dumps(file,indent=4,
+    separators=(',', ': ')))
+
+def test_get_pmids_workflomics():
+    _, _, no_tools = data.get_pmids_workflomics()
+    assert no_tools > 10
+    assert no_tools < 30
+    

@@ -29,7 +29,7 @@ def metafile_schema_validation(metadata_file):
     if not all(key in metadata_file and isinstance(metadata_file[key], required_meta_keys[key]) for key in required_meta_keys):
         raise SchemaValidationError("The schema of the top layer of the metadata file is incorrect.")
     
-    tool = metadata_file["tools"][0] # check only first cause otherwise it takes too much time 
+    tool = metadata_file["tools"][0] # check only first cause otherwise it takes too much time
     print(tool)
     if not all(key in tool and isinstance(tool[key], required_meta_tool_keys[key]) for key in required_meta_tool_keys):
         print([(tool[key], required_meta_tool_keys[key]) for key in required_meta_tool_keys])

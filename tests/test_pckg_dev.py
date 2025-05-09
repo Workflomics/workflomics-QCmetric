@@ -1,7 +1,10 @@
-from pubmetric.pckg_dev import *
+import os
+import igraph
 from pubmetric import data
 import asyncio
 import pickle
+
+from pubmetric.pckg_dev import generate_random_workflow
 
 def get_pmids_from_file(shared_datadir): # TODO why is this here?
     filename = os.path.join(shared_datadir, "doi_pmid_library.json")

@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "pubmetric"
+version = "0.2.0"
+description = "Cocitation based metric for workflow evaluation"
+authors = ["Alma Nilsson <alma.as.nilsson@gmail.com>", "Vedran Kasalica", "Magnus Palmblad"]
+license = "Apache-2.0"
+readme = "README.md"
+packages = [
+    { include = "pubmetric", from = "src" }]
+homepage = "https://github.com/Workflomics/pubmetric"
+repository = "https://github.com/Workflomics/pubmetric"
+documentation = "https://workflomics.readthedocs.io/en/latest/developer-guide/pubmetric.html"
+keywords = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent"
+]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<4.0"
+asyncio = "^3.4.3"
+igraph = "^0.11.6"
+requests = "^2.32"
+py4cytoscape = "^1.9.0"
+pandas = "^2.2.3"
+tqdm = "^4.66.2"
+numpy = "^2.1.2"
+matplotlib = "^3.9.2"
+cwl_utils = "^0.15"
+fastapi = "^0.115.2"
+scikit-learn = "^1.5.2"
+apscheduler = "^3.10"
+uvicorn = "^0.31.1"
+httpx = "^0.27.2"
+python-multipart = "^0.0.12"
+pytype = "^2024.10.11"
+certifi = "^2024.8.30"
+aiohttp = "^3.10.10"
+
+[tool.poetry.dev-dependencies]
+pytest = "^8.3.3"
+pytest-datadir = "^1.3.1"
+pytest-asyncio = "^0.24.0"
+
+[tool.poetry.scripts]
+pubmetric-api = "uvicorn src.pubmetric.api_controller:app --reload"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

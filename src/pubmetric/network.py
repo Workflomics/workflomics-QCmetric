@@ -168,7 +168,7 @@ def process_chunk(chunk: dict):
 
 async def create_network(outpath: Optional[str] = None,
                         test_size: Optional[int] = None,
-                        topic_id: Optional[str] = "topic_0121",
+                        topic_id: Optional[str] = "",
                         random_seed: int = 42,
                         load_graph: bool = False,
                         inpath: str = '',
@@ -180,7 +180,7 @@ async def create_network(outpath: Optional[str] = None,
 
     :param topic_id: The ID to which the downloaded tools belong,
         e.g., "Proteomics" or "DNA" as defined by EDAM ontology.
-    :param test_size: Determines the minimum number of tools downloaded.
+    :param test_size: Determines the maximum number of tools downloaded.
     :param random_seed: Specifies the seed used to randomly pick tools in a test run.
         Default is 42.
     :param load_graph: Determines if an already generated graph is loaded or if it
@@ -243,9 +243,10 @@ async def create_network(outpath: Optional[str] = None,
                 if not selected_tools:
                     raise ValueError("No tools were downloaded; please check the download source.")
             elif isinstance(tool_selection, (list, set)):
+                tool_selection_set = set(tool_selection)
                 selected_tools = [tool
                                   for tool in metadata_file['tools']
-                                  if tool['name'] in tool_selection]
+                                  if tool['name'] in tool_selection_set]
                 if not selected_tools:
                     raise ValueError(
                         "No matching tools found; check the tool names in tool_selection.")
