@@ -1,7 +1,6 @@
 # Workflomics Publication Metric
 
-This code is currently under development.
-
+The official documentation of the Workflomics publication metric, pubmetric, is available in the [Workflomics documentation](https://workflomics.readthedocs.io/en/latest/developer-guide/pubmetric.html)
 
 ## Overview
 
