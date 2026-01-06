@@ -9,7 +9,7 @@ setup(
     license='Apache License 2.0',
     packages=find_packages(),
     install_requires=[
-        'aiohttp==3.9.5',
+        'aiohttp==3.13.3',
         'asyncio==3.4.3',
         'igraph',
         'requests',
